@@ -1,0 +1,77 @@
+function recommendUpsellCrossSell() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sales Data');
+  var data = sheet.getDataRange().getValues();
+
+  var productPairs = {};  // For cross-sell recommendations
+  var productSpend = {};  // For upsell recommendations
+
+  // Analyze purchase data
+  for (var i = 1; i < data.length; i++) {
+    var purchases = data[i][2].split(',');  // Assuming the third column is Purchase History
+    var spend = parseFloat(data[i][3]);     // Assuming the fourth column is Total Spend
+
+    // Track product spend
+    for (var j = 0; j < purchases.length; j++) {
+      if (!productSpend[purchases[j]]) {
+        productSpend[purchases[j]] = [];
+      }
+      productSpend[purchases[j]].push(spend);
+    }
+
+    // Track product pairs for cross-sell
+    for (var j = 0; j < purchases.length; j++) {
+      for (var k = j + 1; k < purchases.length; k++) {
+        var pair = purchases[j] + '-' + purchases[k];
+        if (!productPairs[pair]) {
+          productPairs[pair] = 0;
+        }
+        productPairs[pair]++;
+      }
+    }
+  }
+
+  // Generate recommendations
+  var recommendations = [];
+  for (var i = 1; i < data.length; i++) {
+    var customerId = data[i][0];            // Assuming the first column is Customer ID
+    var customerName = data[i][1];          // Assuming the second column is Customer Name
+    var purchases = data[i][2].split(',');
+    var spend = parseFloat(data[i][3]);
+
+    var recommendedProducts = [];
+
+    // Cross-sell: Recommend frequently bought together products
+    for (var j = 0; j < purchases.length; j++) {
+      for (var pair in productPairs) {
+        if (pair.includes(purchases[j])) {
+          var otherProduct = pair.replace(purchases[j], '').replace('-', '');
+          if (!purchases.includes(otherProduct) && !recommendedProducts.includes(otherProduct)) {
+            recommendedProducts.push(otherProduct);
+          }
+        }
+      }
+    }
+
+    // Upsell: Recommend products with higher average spend
+    var averageSpend = spend / purchases.length;
+    for (var product in productSpend) {
+      var productAverageSpend = productSpend[product].reduce((a, b) => a + b, 0) / productSpend[product].length;
+      if (productAverageSpend > averageSpend && !purchases.includes(product) && !recommendedProducts.includes(product)) {
+        recommendedProducts.push(product);
+      }
+    }
+
+    recommendations.push([customerId, customerName, recommendedProducts.join(', ')]);
+  }
+
+  // Output recommendations to a new sheet
+  var recommendationsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Recommendations');
+  if (!recommendationsSheet) {
+    recommendationsSheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Recommendations');
+  }
+  recommendationsSheet.clear();
+  recommendationsSheet.appendRow(['Customer ID', 'Customer Name', 'Recommendations']);
+  for (var i = 0; i < recommendations.length; i++) {
+    recommendationsSheet.appendRow(recommendations[i]);
+  }
+}
